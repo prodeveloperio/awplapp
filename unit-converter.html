@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unit Converter — Length, Weight, Temperature, Area, Volume, Time, Data</title>
+<meta name="description" content="Free offline unit converter for length, weight, temperature, area, volume, time and data size. Instant conversion with swap, copy and clear.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="unit-converter">
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html">Tool<span>box</span></a>
+    <nav class="nav" data-nav aria-label="Main navigation"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="page-head">
+      <h1>Unit Converter</h1>
+      <p>Instant conversions across seven categories. Everything is calculated in your browser.</p>
+    </div>
+
+    <section class="panel">
+      <div class="row" style="margin-bottom:12px">
+        <div class="field" style="max-width:220px;flex:1 1 180px">
+          <label for="category">Category</label>
+          <select id="category">
+            <option value="length">Length</option>
+            <option value="weight">Weight / Mass</option>
+            <option value="temperature">Temperature</option>
+            <option value="area">Area</option>
+            <option value="volume">Volume</option>
+            <option value="time">Time</option>
+            <option value="data">Data size</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:220px;flex:1 1 180px">
+          <label for="quick">Quick value</label>
+          <input type="text" id="quick" placeholder="Type a number to convert from" inputmode="decimal" autocomplete="off">
+        </div>
+        <div class="btn-row">
+          <button type="button" id="swapBtn">Swap units</button>
+          <button type="button" id="clearBtn">Clear</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="fromUnit">From unit</label>
+          <div class="row" style="align-items:stretch">
+            <input type="text" id="fromValue" value="1" inputmode="decimal" autocomplete="off" aria-label="Value to convert">
+            <select id="fromUnit" style="max-width:180px"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="toUnit">To unit</label>
+          <div class="row" style="align-items:stretch">
+            <input type="text" id="toValue" readonly aria-label="Converted result" style="font-weight:700">
+            <select id="toUnit" style="max-width:180px"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="msg" id="errorBox" role="alert" hidden style="margin-top:10px"></div>
+
+      <div class="btn-row" style="margin-top:10px">
+        <button type="button" class="primary" id="copyBtn">Copy result</button>
+        <span class="hint" id="summary"></span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>All <span id="catLabel">length</span> units</h2>
+      <p class="hint" style="margin:0 0 10px">Values update automatically. Click a row to use that unit as the "from" unit.</p>
+      <div class="table-wrap">
+        <table id="allTable" style="width:100%;border-collapse:collapse;font-size:0.92rem">
+          <thead>
+            <tr>
+              <th scope="col" style="text-align:left;padding:6px;border-bottom:1px solid var(--border)">Unit</th>
+              <th scope="col" style="text-align:right;padding:6px;border-bottom:1px solid var(--border)">Value</th>
+            </tr>
+          </thead>
+          <tbody id="allBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>&copy; <span data-footer-year></span> Toolbox — all tools work offline.</span>
+    <span><a href="word-counter.html">Word Counter</a> · <a href="json-formatter.html">JSON Formatter</a> · <a href="text-cleaner.html">Text Cleaner</a></span>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var category = document.getElementById('category');
+  var fromUnit = document.getElementById('fromUnit');
+  var toUnit = document.getElementById('toUnit');
+  var fromValue = document.getElementById('fromValue');
+  var toValue = document.getElementById('toValue');
+  var quick = document.getElementById('quick');
+  var summary = document.getElementById('summary');
+  var errorBox = document.getElementById('errorBox');
+  var allBody = document.getElementById('allBody');
+  var catLabel = document.getElementById('catLabel');
+
+  /* toBase converts a value in the unit to its base unit. fromBase is the inverse. */
+  var CATEGORIES = {
+    length: {
+      label: 'Length',
+      base: 'm',
+      units: [
+        { id: 'nm', name: 'Nanometre (nm)', toBase: function (v) { return v / 1e9; }, fromBase: function (v) { return v * 1e9; } },
+        { id: 'um', name: 'Micrometre (µm)', toBase: function (v) { return v / 1e6; }, fromBase: function (v) { return v * 1e6; } },
+        { id: 'mm', name: 'Millimetre (mm)', toBase: function (v) { return v / 1000; }, fromBase: function (v) { return v * 1000; } },
+        { id: 'cm', name: 'Centimetre (cm)', toBase: function (v) { return v / 100; }, fromBase: function (v) { return v * 100; } },
+        { id: 'm', name: 'Metre (m)', toBase: function (v) { return v; }, fromBase: function (v) { return v; } },
+        { id: 'km', name: 'Kilometre (km)', toBase: function (v) { return v * 1000; }, fromBase: function (v) { return v / 1000; } },
+        { id: 'in', name: 'Inch (in)', toBase: function (v) { return v * 0.0254; }, fromBase: function (v) { return v / 0.0254; } },
+        { id: 'ft', name: 'Foot (ft)', toBase: function (v) { return v * 0.3048; }, fromBase: function (v) { return v / 0.3048; } },
+        { id: 'yd', name: 'Yard (yd)', toBase: function (v) { return v * 0.9144; }, fromBase: function (v) { return v / 0.9144; } },
+        { id: 'mi', name: 'Mile (mi)', toBase: function (v) { return v * 1609.344; }, fromBase: function (v) { return v / 1609.344; } },
+        { id: 'nmi', name: 'Nautical mile (nmi)', toBase: function (v) { return v * 1852; }, fromBase: function (v) { return v / 1852; } },
+        { id: 'ly', name: 'Light year (ly)', toBase: function (v) { return v * 9460730472580800; }, fromBase: function (v) { return v / 9460730472580800; } }
+      ]
+    },
+    weight: {
+      label: 'Weight / Mass',
+      base: 'kg',
+      units: [
+        { id: 'mg', name: 'Milligram (mg)', toBase: function (v) { return v / 1e6; }, fromBase: function (v) { return v * 1e6; } },
+        { id: 'g', name: 'Gram (g)', toBase: function (v) { return v / 1000; }, fromBase: function (v) { return v * 1000; } },
+        { id: 'kg', name: 'Kilogram (kg)', toBase: function (v) { return v; }, fromBase: function (v) { return v; } },
+        { id: 't', name: 'Metric tonne (t)', toBase: function (v) { return v * 1000; }, fromBase: function (v) { return v / 1000; } },
+        { id: 'oz', name: 'Ounce (oz)', toBase: function (v) { return v * 0.028349523125; }, fromBase: function (v) { return v / 0.028349523125; } },
+        { id: 'lb', name: 'Pound (lb)', toBase: function (v) { return v * 0.45359237; }, fromBase: function (v) { return v / 0.45359237; } },
+        { id: 'st', name: 'Stone (st)', toBase: function (v) { return v * 6.35029318; }, fromBase: function (v) { return v / 6.35029318; } },
+        { id: 'ton_us', name: 'US ton', toBase: function (v) { return v * 907.18474; }, fromBase: function (v) { return v / 907.18474; } },
+        { id: 'ton_uk', name: 'Imperial ton', toBase: function (v) { return v * 1016.0469088; }, fromBase: function (v) { return v / 1016.0469088; } },
+        { id: 'ct', name: 'Carat (ct)', toBase: function (v) { return v * 0.0002; }, fromBase: function (v) { return v / 0.0002; } }
+      ]
+    },
+    temperature: {
+      label: 'Temperature',
+      base: 'C',
+      units: [
+        { id: 'C', name: 'Celsius (°C)', toBase: function (v) { return v; }, fromBase: function (v) { return v; } },
+        { id: 'F', name: 'Fahrenheit (°F)', toBase: function (v) { return (v - 32) * 5 / 9; }, fromBase: function (v) { return v * 9 / 5 + 32; } },
+        { id: 'K', name: 'Kelvin (K)', toBase: function (v) { return v - 273.15; }, fromBase: function (v) { return v + 273.15; } },
+        { id: 'R', name: 'Rankine (°R)', toBase: function (v) { return (v - 491.67) * 5 / 9; }, fromBase: function (v) { return (v + 273.15) * 9 / 5; } }
+      ]
+    },
+    area: {
+      label: 'Area',
+      base: 'm2',
+      units: [
+        { id: 'mm2', name: 'Square millimetre (mm²)', toBase: function (v) { return v / 1e6; }, fromBase: function (v) { return v * 1e6; } },
+        { id: 'cm2', name: 'Square centimetre (cm²)', toBase: function (v) { return v / 1e4; }, fromBase: function (v) { return v * 1e4; } },
+        { id: 'm2', name: 'Square metre (m²)', toBase: function (v) { return v; }, fromBase: function (v) { return v; } },
+        { id: 'ha', name: 'Hectare (ha)', toBase: function (v) { return v * 10000; }, fromBase: function (v) { return v / 10000; } },
+        { id: 'km2', name: 'Square kilometre (km²)', toBase: function (v) { return v * 1e6; }, fromBase: function (v) { return v / 1e6; } },
+        { id: 'in2', name: 'Square inch (in²)', toBase: function (v) { return v * 0.00064516; }, fromBase: function (v) { return v / 0.00064516; } },
+        { id: 'ft2', name: 'Square foot (ft²)', toBase: function (v) { return v * 0.09290304; }, fromBase: function (v) { return v / 0.09290304; } },
+        { id: 'yd2', name: 'Square yard (yd²)', toBase: function (v) { return v * 0.83612736; }, fromBase: function (v) { return v / 0.83612736; } },
+        { id: 'ac', name: 'Acre (ac)', toBase: function (v) { return v * 4046.8564224; }, fromBase: function (v) { return v / 4046.8564224; } },
+        { id: 'mi2', name: 'Square mile (mi²)', toBase: function (v) { return v * 2589988.110336; }, fromBase: function (v) { return v / 2589988.110336; } }
+      ]
+    },
+    volume: {
+      label: 'Volume',
+      base: 'l',
+      units: [
+        { id: 'ml', name: 'Millilitre (ml)', toBase: function (v) { return v / 1000; }, fromBase: function (v) { return v * 1000; } },
+        { id: 'l', name: 'Litre (l)', toBase: function (v) { return v; }, fromBase: function (v) { return v; } },
+        { id: 'm3', name: 'Cubic metre (m³)', toBase: function (v) { return v * 1000; }, fromBase: function (v) { return v / 1000; } },
+        { id: 'cm3', name: 'Cubic centimetre (cm³)', toBase: function (v) { return v / 1000; }, fromBase: function (v) { return v * 1000; } },
+        { id: 'tsp', name: 'Teaspoon (US)', toBase: function (v) { return v * 0.00492892159375; }, fromBase: function (v) { return v / 0.00492892159375; } },
+        { id: 'tbsp', name: 'Tablespoon (US)', toBase: function (v) { return v * 0.01478676478125; }, fromBase: function (v) { return v / 0.01478676478125; } },
+        { id: 'floz', name: 'Fluid ounce (US)', toBase: function (v) { return v * 0.0295735295625; }, fromBase: function (v) { return v / 0.0295735295625; } },
+        { id: 'cup', name: 'Cup (US)', toBase: function (v) { return v * 0.2365882365; }, fromBase: function (v) { return v / 0.2365882365; } },
+        { id: 'pt', name: 'Pint (US)', toBase: function (v) { return v * 0.473176473; }, fromBase: function (v) { return v / 0.473176473; } },
+        { id: 'qt', name: 'Quart (US)', toBase: function (v) { return v * 0.946352946; }, fromBase: function (v) { return v / 0.946352946; } },
+        { id: 'gal', name: 'Gallon (US)', toBase: function (v) { return v * 3.785411784; }, fromBase: function (v) { return v / 3.785411784; } },
+        { id: 'gal_uk', name: 'Gallon (UK)', toBase: function (v) { return v * 4.54609; }, fromBase: function (v) { return v / 4.54609; } }
+      ]
+    },
+    time: {
+      label: 'Time',
+      base: 's',
+      units: [
+        { id: 'ns', name: 'Nanosecond (ns)', toBase: function (v) { return v / 1e9; }, fromBase: function (v) { return v * 1e9; } },
+        { id: 'ms', name: 'Millisecond (ms)', toBase: function (v) { return v / 1000; }, fromBase: function (v) { return v * 1000; } },
+        { id: 's', name: 'Second (s)', toBase: function (v) { return v; }, fromBase: function (v) { return v; } },
+        { id: 'min', name: 'Minute (min)', toBase: function (v) { return v * 60; }, fromBase: function (v) { return v / 60; } },
+        { id: 'h', name: 'Hour (h)', toBase: function (v) { return v * 3600; }, fromBase: function (v) { return v / 3600; } },
+        { id: 'd', name: 'Day (d)', toBase: function (v) { return v * 86400; }, fromBase: function (v) { return v / 86400; } },
+        { id: 'wk', name: 'Week (wk)', toBase: function (v) { return v * 604800; }, fromBase: function (v) { return v / 604800; } },
+        { id: 'mo', name: 'Month (30 days)', toBase: function (v) { return v * 2592000; }, fromBase: function (v) { return v / 2592000; } },
+        { id: 'y', name: 'Year (365 days)', toBase: function (v) { return v * 31536000; }, fromBase: function (v) { return v / 31536000; } }
+      ]
+    },
+    data: {
+      label: 'Data size',
+      base: 'B',
+      units: [
+        { id: 'bit', name: 'Bit (b)', toBase: function (v) { return v / 8; }, fromBase: function (v) { return v * 8; } },
+        { id: 'B', name: 'Byte (B)', toBase: function (v) { return v; }, fromBase: function (v) { return v; } },
+        { id: 'KB', name: 'Kilobyte (KB, 1000)', toBase: function (v) { return v * 1000; }, fromBase: function (v) { return v / 1000; } },
+        { id: 'KiB', name: 'Kibibyte (KiB, 1024)', toBase: function (v) { return v * 1024; }, fromBase: function (v) { return v / 1024; } },
+        { id: 'MB', name: 'Megabyte (MB, 1000²)', toBase: function (v) { return v * 1e6; }, fromBase: function (v) { return v / 1e6; } },
+        { id: 'MiB', name: 'Mebibyte (MiB, 1024²)', toBase: function (v) { return v * 1048576; }, fromBase: function (v) { return v / 1048576; } },
+        { id: 'GB', name: 'Gigabyte (GB, 1000³)', toBase: function (v) { return v * 1e9; }, fromBase: function (v) { return v / 1e9; } },
+        { id: 'GiB', name: 'Gibibyte (GiB, 1024³)', toBase: function (v) { return v * 1073741824; }, fromBase: function (v) { return v / 1073741824; } },
+        { id: 'TB', name: 'Terabyte (TB, 1000⁴)', toBase: function (v) { return v * 1e12; }, fromBase: function (v) { return v / 1e12; } },
+        { id: 'TiB', name: 'Tebibyte (TiB, 1024⁴)', toBase: function (v) { return v * 1099511627776; }, fromBase: function (v) { return v / 1099511627776; } }
+      ]
+    }
+  };
+
+  var DEFAULTS = {
+    length: ['m', 'ft'],
+    weight: ['kg', 'lb'],
+    temperature: ['C', 'F'],
+    area: ['m2', 'ft2'],
+    volume: ['l', 'gal'],
+    time: ['h', 'min'],
+    data: ['MB', 'MiB']
+  };
+
+  function units() { return CATEGORIES[category.value].units; }
+  function findUnit(id) {
+    var list = units();
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return list[0];
+  }
+
+  function populate() {
+    var list = units();
+    var html = '';
+    for (var i = 0; i < list.length; i++) {
+      html += '<option value="' + list[i].id + '">' + App.escapeHtml(list[i].name) + '</option>';
+    }
+    fromUnit.innerHTML = html;
+    toUnit.innerHTML = html;
+    var def = DEFAULTS[category.value] || [list[0].id, list[list.length - 1].id];
+    fromUnit.value = def[0];
+    toUnit.value = def[1];
+    catLabel.textContent = CATEGORIES[category.value].label.toLowerCase();
+  }
+
+  function parseNumber(raw) {
+    var s = String(raw).trim();
+    if (!s) return NaN;
+    s = s.replace(/[\s']/g, '');
+    if (/^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
+      s = s.replace(/,/g, '');            /* 1,234,567.89 — thousands separators */
+    } else if (s.indexOf(',') > -1) {
+      s = s.replace(/,/g, '.');            /* 12,5 — comma decimal separator */
+    }
+    if (!/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(s)) return NaN;
+    return parseFloat(s);
+  }
+
+  var SIG = 14; /* keep full double precision, trimmed of noise */
+
+  function withThousands(s) {
+    var neg = s.charAt(0) === '-';
+    if (neg) s = s.slice(1);
+    var parts = s.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return (neg ? '-' : '') + parts.join('.');
+  }
+
+  function formatResult(v) {
+    if (typeof v !== 'number' || isNaN(v)) return '—';
+    if (!isFinite(v)) return v > 0 ? '∞' : '-∞';
+    if (v === 0) return '0';
+    var abs = Math.abs(v);
+    if (abs < 1e-7 || abs >= 1e16) {
+      return v.toExponential(SIG - 1)
+        .replace(/(\.\d*?)0+e/, '$1e')
+        .replace(/\.e/, 'e')
+        .replace(/e([+-])(\d)$/, 'e$10$2');
+    }
+    if (Math.floor(v) === v) return withThousands(String(v));
+    return withThousands(String(Number(v.toPrecision(SIG))));
+  }
+
+  function convert() {
+    var raw = fromValue.value;
+    var n = parseNumber(raw);
+    if (raw.trim() !== '' && isNaN(n)) {
+      App.setMsg(errorBox, 'err', 'Enter a valid number (e.g. 12, 12.5, 1e3).');
+      toValue.value = '';
+      summary.textContent = '';
+      return;
+    }
+    if (raw.trim() === '') {
+      App.setMsg(errorBox, null, '');
+      toValue.value = '';
+      summary.textContent = '';
+      return;
+    }
+    if (n === -273.15 && category.value === 'temperature' && findUnit(fromUnit.value).id === 'C') {
+      App.setMsg(errorBox, 'warn', 'Absolute zero is −273.15 °C.');
+    } else {
+      App.setMsg(errorBox, null, '');
+    }
+    var f = findUnit(fromUnit.value);
+    var t = findUnit(toUnit.value);
+    var base = f.toBase(n);
+    var out = t.fromBase(base);
+    toValue.value = formatResult(out);
+    summary.textContent = n + ' ' + unitShort(f) + ' = ' + toValue.value + ' ' + unitShort(t);
+    renderAll(n);
+  }
+
+  function unitShort(u) {
+    var m = u.name.match(/\(([^)]+)\)\s*$/);
+    return m ? m[1] : u.name;
+  }
+
+  function renderAll(n) {
+    var list = units();
+    var f = findUnit(fromUnit.value);
+    var base = f.toBase(n);
+    var html = '';
+    for (var i = 0; i < list.length; i++) {
+      var v = list[i].fromBase(base);
+      html += '<tr>' +
+        '<td style="padding:5px 6px;border-bottom:1px solid #eef1f5">' +
+        '<button type="button" class="unit-btn" data-unit="' + list[i].id + '">' + App.escapeHtml(list[i].name) + '</button>' +
+        '</td>' +
+        '<td style="padding:5px 6px;border-bottom:1px solid #eef1f5;text-align:right;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.88rem;word-break:break-all">' + formatResult(v) + '</td>' +
+        '</tr>';
+    }
+    allBody.innerHTML = html;
+  }
+
+  allBody.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('button[data-unit]') : null;
+    if (!btn) return;
+    fromUnit.value = btn.getAttribute('data-unit');
+    convert();
+  });
+
+  fromValue.addEventListener('input', convert);
+  fromUnit.addEventListener('change', convert);
+  toUnit.addEventListener('change', convert);
+  category.addEventListener('change', function () {
+    populate();
+    convert();
+  });
+
+  quick.addEventListener('input', function () {
+    var v = quick.value.trim();
+    if (!v) return;
+    fromValue.value = v;
+    convert();
+  });
+
+  document.getElementById('swapBtn').addEventListener('click', function () {
+    var a = fromUnit.value;
+    fromUnit.value = toUnit.value;
+    toUnit.value = a;
+    var val = toValue.value;
+    if (val) fromValue.value = val;
+    convert();
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', function () {
+    fromValue.value = '';
+    toValue.value = '';
+    quick.value = '';
+    summary.textContent = '';
+    App.setMsg(errorBox, null, '');
+    allBody.innerHTML = '';
+    fromValue.focus();
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    if (!toValue.value) {
+      App.setMsg(errorBox, 'warn', 'Nothing to copy — enter a value first.');
+      return;
+    }
+    App.copyText(toValue.value, this, 'Copied');
+  });
+
+  populate();
+  convert();
+})();
+</script>
+</body>
+</html>

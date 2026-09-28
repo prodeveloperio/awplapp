@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word Counter — Count Words and Characters Online Free</title>
+<meta name="description" content="Free online word counter. Count words, characters, sentences, paragraphs and reading time. Works offline, nothing is uploaded.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="word-counter">
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html">Tool<span>box</span></a>
+    <nav class="nav" data-nav aria-label="Main navigation"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="page-head">
+      <h1>Word Counter</h1>
+      <p>Live word, character, sentence and paragraph counts with reading and speaking time.</p>
+    </div>
+
+    <section class="panel">
+      <div class="stats" id="stats">
+        <div class="stat"><span class="v" id="s-words">0</span><span class="k">Words</span></div>
+        <div class="stat"><span class="v" id="s-chars">0</span><span class="k">Characters</span></div>
+        <div class="stat"><span class="v" id="s-chars-no-spaces">0</span><span class="k">Chars no spaces</span></div>
+        <div class="stat"><span class="v" id="s-sentences">0</span><span class="k">Sentences</span></div>
+        <div class="stat"><span class="v" id="s-paragraphs">0</span><span class="k">Paragraphs</span></div>
+        <div class="stat"><span class="v" id="s-unique">0</span><span class="k">Unique words</span></div>
+        <div class="stat"><span class="v" id="s-read">0s</span><span class="k">Reading time</span></div>
+        <div class="stat"><span class="v" id="s-speak">0s</span><span class="k">Speaking time</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <label class="sr-only" for="text">Text to count</label>
+      <textarea id="text" class="wrap-text" placeholder="Type or paste your text here…" spellcheck="false"></textarea>
+      <div class="btn-row" style="margin-top:10px">
+        <button type="button" class="primary" id="copyBtn">Copy text</button>
+        <button type="button" id="clearBtn">Clear</button>
+        <button type="button" id="demoBtn">Sample text</button>
+        <button type="button" id="downloadBtn">Download .txt</button>
+        <button type="button" id="uploadBtn">Import .txt</button>
+        <input type="file" id="fileInput" class="file-input" accept=".txt,.text,.md,.csv,text/*">
+        <label class="checkline"><input type="checkbox" id="liveUpdate" checked> Live update</label>
+      </div>
+      <p class="hint" id="fileMsg" style="margin:8px 0 0"></p>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>&copy; <span data-footer-year></span> Toolbox — all tools work offline.</span>
+    <span><a href="json-formatter.html">JSON Formatter</a> · <a href="text-cleaner.html">Text Cleaner</a> · <a href="unit-converter.html">Unit Converter</a></span>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var text = document.getElementById('text');
+  var live = document.getElementById('liveUpdate');
+  var WPM = 200, SPM = 130;
+
+  function humanTime(minutes) {
+    if (minutes < 1) return Math.max(1, Math.round(minutes * 60)) + 's';
+    if (minutes < 60) return (Math.round(minutes * 10) / 10) + ' min';
+    var h = Math.floor(minutes / 60);
+    var m = Math.round(minutes % 60);
+    if (m === 60) { h += 1; m = 0; }
+    return h + 'h' + (m ? ' ' + m + 'm' : '');
+  }
+
+  function update() {
+    var v = text.value;
+    var words = v.match(/[^\s]+/g);
+    var wordCount = words ? words.length : 0;
+    var chars = v.length;
+    var charsNoSpaces = v.replace(/\s/g, '').length;
+    var sents = v.trim() ? (v.match(/[^.!?…]+[.!?…]+(\s|$)|[^.!?…]+$/g) || []).filter(function (s) { return s.trim(); }).length : 0;
+    var paras = v.split(/\n\s*\n|\n/).filter(function (p) { return p.trim().length > 0; }).length;
+    var uniq = 0;
+    if (wordCount) {
+      var set = Object.create(null);
+      for (var i = 0; i < words.length; i++) {
+        var w = words[i].toLowerCase().replace(/[^\wÀ-￿'-]+/g, '');
+        if (w) set[w] = 1;
+      }
+      uniq = Object.keys(set).length;
+    }
+    document.getElementById('s-words').textContent = App.formatNumber(wordCount);
+    document.getElementById('s-chars').textContent = App.formatNumber(chars);
+    document.getElementById('s-chars-no-spaces').textContent = App.formatNumber(charsNoSpaces);
+    document.getElementById('s-sentences').textContent = App.formatNumber(sents);
+    document.getElementById('s-paragraphs').textContent = App.formatNumber(paras);
+    document.getElementById('s-unique').textContent = App.formatNumber(uniq);
+    document.getElementById('s-read').textContent = humanTime(wordCount / WPM);
+    document.getElementById('s-speak').textContent = humanTime(wordCount / SPM);
+  }
+
+  var updateSoon = App.debounce(update, 120);
+
+  text.addEventListener('input', function () { if (live.checked) updateSoon(); });
+  live.addEventListener('change', update);
+
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    App.copyText(text.value, this, 'Copied');
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', function () {
+    text.value = '';
+    update();
+    text.focus();
+  });
+
+  document.getElementById('demoBtn').addEventListener('click', function () {
+    text.value = 'The quick brown fox jumps over the lazy dog. It was a bright cold day in April, and the clocks were striking thirteen.\n\nWinston Smith, his chin nuzzled into his breast in an effort to escape the vile wind, slipped quickly through the glass doors of Victory Mansions. "You will not escape from here," said the guard.\n\nCounting words is useful for students, writers, and anyone who needs to hit a target. Paste your own text above and the totals update instantly, right in your browser.';
+    update();
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', function () {
+    if (!text.value) { App.setMsg(document.getElementById('fileMsg'), 'warn', 'Nothing to download.'); return; }
+    App.download('word-counter-text.txt', text.value, 'text/plain');
+  });
+
+  var fileInput = document.getElementById('fileInput');
+  document.getElementById('uploadBtn').addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () {
+    App.readFile(fileInput.files[0], function (content) {
+      text.value = content;
+      update();
+      App.setMsg(document.getElementById('fileMsg'), 'ok', 'Imported ' + App.formatNumber(content.length) + ' characters.');
+    }, function (err) {
+      App.setMsg(document.getElementById('fileMsg'), 'err', err);
+    });
+    fileInput.value = '';
+  });
+
+  update();
+})();
+</script>
+</body>
+</html>

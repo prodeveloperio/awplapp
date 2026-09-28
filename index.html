@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toolbox — Free Offline Web Tools</title>
+<meta name="description" content="Fast, free, privacy-friendly text and developer tools that run entirely in your browser. Word counter, JSON formatter, text cleaner and unit converter.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="home">
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html">Tool<span>box</span></a>
+    <nav class="nav" data-nav aria-label="Main navigation"></nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <h1>Free web tools</h1>
+    <p>Everything runs locally in your browser. No accounts, no uploads, no tracking.</p>
+    <div class="search-box">
+      <span class="search-icon" aria-hidden="true">&#9906;</span>
+      <label class="sr-only" for="toolSearch">Search tools</label>
+      <input type="text" id="toolSearch" placeholder="Search tools… (e.g. json, words, convert)" autocomplete="off" spellcheck="false">
+    </div>
+  </div>
+</div>
+
+<main>
+  <div class="wrap">
+    <div id="resultsInfo" class="hint" role="status" aria-live="polite"></div>
+    <div id="tools" class="tools"></div>
+    <p id="noResults" class="empty" hidden>No tools match your search.</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>&copy; <span data-footer-year></span> Toolbox — all tools work offline.</span>
+    <span><a href="word-counter.html">Word Counter</a> · <a href="json-formatter.html">JSON Formatter</a> · <a href="text-cleaner.html">Text Cleaner</a> · <a href="unit-converter.html">Unit Converter</a></span>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var TOOLS = App.TOOLS;
+  var host = document.getElementById('tools');
+  var input = document.getElementById('toolSearch');
+  var info = document.getElementById('resultsInfo');
+  var none = document.getElementById('noResults');
+  var query = '';
+
+  function score(tool, q) {
+    var name = tool.name.toLowerCase();
+    var kw = tool.keywords.toLowerCase();
+    var desc = tool.description.toLowerCase();
+    if (name.indexOf(q) === 0) return 0;
+    if (name.indexOf(q) > -1) return 1;
+    if (kw.indexOf(q) > -1) return 2;
+    if (desc.indexOf(q) > -1) return 3;
+    return -1;
+  }
+
+  function render() {
+    var terms = query.split(/\s+/).filter(function (t) { return t.length > 0; });
+    var list = [];
+    for (var i = 0; i < TOOLS.length; i++) {
+      var t = TOOLS[i];
+      var ok = true;
+      var worst = 0;
+      for (var j = 0; j < terms.length; j++) {
+        var s = score(t, terms[j]);
+        if (s < 0) { ok = false; break; }
+        if (s > worst) worst = s;
+      }
+      if (ok) list.push({ tool: t, rank: worst, i: i });
+    }
+    list.sort(function (a, b) { return a.rank - b.rank || a.i - b.i; });
+
+    if (list.length === 0) {
+      host.innerHTML = '';
+      none.hidden = false;
+      info.textContent = '0 tools found';
+      return;
+    }
+    none.hidden = true;
+    info.textContent = list.length === TOOLS.length
+      ? TOOLS.length + ' tools available'
+      : list.length + ' of ' + TOOLS.length + ' tools match';
+
+    var html = '';
+    for (var k = 0; k < list.length; k++) {
+      var tool = list[k].tool;
+      html += '<a class="tool-card" href="' + tool.file + '" data-id="' + tool.id + '">' +
+        '<h3>' + App.escapeHtml(tool.name) + '</h3>' +
+        '<p>' + App.escapeHtml(tool.description) + '</p>' +
+        '<p style="margin-top:6px"><span class="hint">' + App.escapeHtml(tool.category) + '</span></p>' +
+        '</a>';
+    }
+    host.innerHTML = html;
+  }
+
+  input.addEventListener('input', App.debounce(function () {
+    query = input.value.trim().toLowerCase();
+    render();
+  }, 120));
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var first = host.querySelector('.tool-card');
+    if (first) window.location.href = first.getAttribute('href');
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

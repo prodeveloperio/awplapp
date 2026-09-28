@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSON Formatter &amp; Validator — Beautify or Minify JSON</title>
+<meta name="description" content="Free JSON formatter and validator. Beautify or minify JSON, detect errors with line numbers, sort keys and view JSON stats. Runs entirely in your browser.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="json-formatter">
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html">Tool<span>box</span></a>
+    <nav class="nav" data-nav aria-label="Main navigation"></nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="page-head">
+      <h1>JSON Formatter</h1>
+      <p>Format, minify and validate JSON. Errors are reported with line and column.</p>
+    </div>
+
+    <section class="panel">
+      <div class="msg" id="status" role="status" aria-live="polite" hidden></div>
+      <div class="btn-row" style="margin-bottom:10px">
+        <button type="button" class="primary" id="formatBtn">Format</button>
+        <button type="button" id="minifyBtn">Minify</button>
+        <button type="button" id="validateBtn">Validate</button>
+        <button type="button" id="sortBtn">Sort keys</button>
+        <button type="button" id="copyBtn">Copy result</button>
+        <button type="button" id="downloadBtn">Download</button>
+        <button type="button" id="uploadBtn">Import JSON / TXT</button>
+        <button type="button" id="sampleBtn">Sample</button>
+        <button type="button" id="clearBtn">Clear</button>
+        <input type="file" id="fileInput" class="file-input" accept=".json,.txt,application/json,text/*">
+      </div>
+
+      <div class="row" style="margin-bottom:10px">
+        <div class="field" style="max-width:150px">
+          <label for="indent">Indentation</label>
+          <select id="indent">
+            <option value="2" selected>2 spaces</option>
+            <option value="4">4 spaces</option>
+            <option value="1">1 space</option>
+            <option value="tab">Tab</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:180px">
+          <label for="sortOrder">Key sort order</label>
+          <select id="sortOrder">
+            <option value="none" selected>Keep original order</option>
+            <option value="az">A → Z</option>
+            <option value="za">Z → A</option>
+            <option value="azi">A → Z (ignore case)</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:220px">
+          <label for="escapeMode">Escaping</label>
+          <select id="escapeMode">
+            <option value="none" selected>None</option>
+            <option value="html">Escape &lt; &gt; &amp; (for HTML)</option>
+          </select>
+        </div>
+        <label class="checkline"><input type="checkbox" id="liveCheck" checked> Validate while typing</label>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label for="input">Input JSON</label>
+          <textarea id="input" spellcheck="false" placeholder='{"paste":"your JSON here"}'></textarea>
+        </div>
+        <div class="field">
+          <label for="output">Result</label>
+          <textarea id="output" spellcheck="false" readonly placeholder="Formatted JSON appears here"></textarea>
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:10px">
+        <button type="button" id="swapBtn">Use result as input</button>
+        <span class="hint">Tip: drop a .json file anywhere on the page, or press Ctrl/Cmd + Enter to format.</span>
+      </div>
+    </section>
+
+    <section class="panel" id="statsPanel">
+      <h2>Statistics</h2>
+      <div class="stats" id="stats">
+        <div class="stat"><span class="v" id="j-valid">—</span><span class="k">Status</span></div>
+        <div class="stat"><span class="v" id="j-size">0</span><span class="k">Input size</span></div>
+        <div class="stat"><span class="v" id="j-keys">0</span><span class="k">Keys</span></div>
+        <div class="stat"><span class="v" id="j-depth">0</span><span class="k">Max depth</span></div>
+        <div class="stat"><span class="v" id="j-objects">0</span><span class="k">Objects</span></div>
+        <div class="stat"><span class="v" id="j-arrays">0</span><span class="k">Arrays</span></div>
+        <div class="stat"><span class="v" id="j-strings">0</span><span class="k">Strings</span></div>
+        <div class="stat"><span class="v" id="j-numbers">0</span><span class="k">Numbers</span></div>
+        <div class="stat"><span class="v" id="j-booleans">0</span><span class="k">Booleans / null</span></div>
+        <div class="stat"><span class="v" id="j-longest">0</span><span class="k">Longest key</span></div>
+      </div>
+      <div class="msg" id="errorBox" hidden style="margin-top:10px"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>&copy; <span data-footer-year></span> Toolbox — all tools work offline.</span>
+    <span><a href="word-counter.html">Word Counter</a> · <a href="text-cleaner.html">Text Cleaner</a> · <a href="unit-converter.html">Unit Converter</a></span>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var input = document.getElementById('input');
+  var output = document.getElementById('output');
+  var status = document.getElementById('status');
+  var errorBox = document.getElementById('errorBox');
+  var liveCheck = document.getElementById('liveCheck');
+  var MAX_DEPTH = 500;
+  var LIVE_LIMIT = 2000000;
+
+  /* ---------- Parser ----------
+     Nodes: {t:'obj',props:[{k,v}]}, {t:'arr',items:[]},
+             {t:'str',v}, {t:'num',raw}, {t:'lit',v}
+     Numbers keep their original text so large/precise values survive a round trip. */
+
+  function JSONParseError(message, pos) {
+    this.name = 'JSONParseError';
+    this.message = message;
+    this.pos = pos;
+  }
+
+  function parse(src) {
+    var i = 0;
+    var n = src.length;
+    var dup = 0;
+
+    function fail(msg, pos) {
+      throw new JSONParseError(msg, pos === undefined ? i : pos);
+    }
+    function at(offset) { return src.substr(i, offset || 1); }
+    function ws() {
+      while (i < n) {
+        var c = src.charCodeAt(i);
+        if (c === 32 || c === 9 || c === 10 || c === 13) i++;
+        else break;
+      }
+    }
+
+    function value(depth) {
+      if (depth > MAX_DEPTH) fail('Maximum nesting depth of ' + MAX_DEPTH + ' exceeded');
+      ws();
+      if (i >= n) fail('Unexpected end of input: expected a value');
+      var c = src[i];
+      if (c === '{') return object(depth);
+      if (c === '[') return array(depth);
+      if (c === '"') return { t: 'str', v: stringVal() };
+      if (c === '-' || (c >= '0' && c <= '9')) return numberVal();
+      if (at(4) === 'true') { i += 4; return { t: 'lit', v: 'true' }; }
+      if (at(5) === 'false') { i += 5; return { t: 'lit', v: 'false' }; }
+      if (at(4) === 'null') { i += 4; return { t: 'lit', v: 'null' }; }
+      if (c === "'") fail("Unexpected token ' — JSON strings must use double quotes");
+      if (at(3) === 'NaN') fail('NaN is not valid JSON');
+      if (at(8) === 'Infinity' || (c === '-' && at(9) === 'Infinity')) fail('Infinity is not valid JSON');
+      fail("Unexpected character " + JSON.stringify(c) + " at position " + i);
+    }
+
+    function object(depth) {
+      i++; // {
+      var props = [];
+      var seen = Object.create(null);
+      ws();
+      if (src[i] === '}') { i++; return { t: 'obj', props: props }; }
+      for (;;) {
+        ws();
+        if (i >= n) fail('Unexpected end of input: expected }');
+        if (src[i] !== '"') {
+          if (src[i] === '}') fail('Unexpected token } — object key expected');
+          if (src[i] === ',') fail('Trailing comma before } is not valid JSON');
+          fail('Expected a "key" but found ' + JSON.stringify(src[i] === undefined ? 'end of input' : src[i]));
+        }
+        var key = stringVal();
+        if (Object.prototype.hasOwnProperty.call(seen, key)) dup++;
+        seen[key] = 1;
+        ws();
+        if (src[i] !== ':') {
+          if (src[i] === '=') fail("Expected : after key \"" + key + "\" (found =)");
+          fail('Expected : after key "' + key + '"');
+        }
+        i++;
+        props.push({ k: key, v: value(depth + 1) });
+        ws();
+        if (i >= n) fail('Unexpected end of input: missing }');
+        if (src[i] === ',') { i++; continue; }
+        if (src[i] === '}') { i++; return { t: 'obj', props: props }; }
+        fail(src[i] === '}' ? 'Trailing comma is not valid JSON' : 'Expected , or } but found ' + JSON.stringify(src[i]));
+      }
+    }
+
+    function array(depth) {
+      i++; // [
+      var items = [];
+      ws();
+      if (src[i] === ']') { i++; return { t: 'arr', items: items }; }
+      for (;;) {
+        items.push(value(depth + 1));
+        ws();
+        if (i >= n) fail('Unexpected end of input: missing ]');
+        if (src[i] === ',') { i++; continue; }
+        if (src[i] === ']') { i++; return { t: 'arr', items: items }; }
+        fail(src[i] === ']' ? 'Trailing comma is not valid JSON' : 'Expected , or ] but found ' + JSON.stringify(src[i]));
+      }
+    }
+
+    function stringVal() {
+      var start = i;
+      i++; // opening quote
+      var out = '';
+      var chunk = i;
+      for (;;) {
+        if (i >= n) fail('Unterminated string starting at position ' + start);
+        var c = src[i];
+        if (c === '"') {
+          out += src.slice(chunk, i);
+          i++;
+          return out;
+        }
+        if (c === '\\') {
+          out += src.slice(chunk, i);
+          var esc = src[i + 1];
+          if (esc === undefined) fail('Unterminated escape sequence');
+          switch (esc) {
+            case '"': out += '"'; i += 2; break;
+            case '\\': out += '\\'; i += 2; break;
+            case '/': out += '/'; i += 2; break;
+            case 'b': out += '\b'; i += 2; break;
+            case 'f': out += '\f'; i += 2; break;
+            case 'n': out += '\n'; i += 2; break;
+            case 'r': out += '\r'; i += 2; break;
+            case 't': out += '\t'; i += 2; break;
+            case 'u': {
+              var hex = src.substr(i + 2, 4);
+              if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail('Invalid \\u escape sequence');
+              out += String.fromCharCode(parseInt(hex, 16));
+              i += 6;
+              break;
+            }
+            default:
+              fail('Invalid escape character \\' + esc);
+          }
+          chunk = i;
+          continue;
+        }
+        var code = src.charCodeAt(i);
+        if (code < 0x20) fail('Invalid control character in string (must be escaped)');
+        i++;
+      }
+    }
+
+    function numberVal() {
+      var start = i;
+      if (src[i] === '-') i++;
+      if (src[i] === '0') {
+        i++;
+      } else if (src[i] >= '1' && src[i] <= '9') {
+        while (i < n && src[i] >= '0' && src[i] <= '9') i++;
+      } else {
+        fail('Invalid number: unexpected ' + JSON.stringify(src[i] === undefined ? 'end of input' : src[i]));
+      }
+      if (src[i] === '.') {
+        i++;
+        if (!(src[i] >= '0' && src[i] <= '9')) fail('Invalid number: expected digits after decimal point');
+        while (i < n && src[i] >= '0' && src[i] <= '9') i++;
+      }
+      if (src[i] === 'e' || src[i] === 'E') {
+        i++;
+        if (src[i] === '+' || src[i] === '-') i++;
+        if (!(src[i] >= '0' && src[i] <= '9')) fail('Invalid number: expected digits in exponent');
+        while (i < n && src[i] >= '0' && src[i] <= '9') i++;
+      }
+      return { t: 'num', raw: src.slice(start, i) };
+    }
+
+    if (src.charCodeAt(0) === 0xFEFF) i = 1;
+    ws();
+    if (i >= n) fail('Input is empty');
+    var root = value(0);
+    ws();
+    if (i < n) fail('Unexpected trailing content after the JSON value (position ' + i + ')');
+    root.dupKeys = dup;
+    return root;
+  }
+
+  function positionInfo(src, pos) {
+    var line = 1, col = 1, k = 0, start = 0;
+    while (k < pos && k < src.length) {
+      if (src.charCodeAt(k) === 10) { line++; col = 1; start = k + 1; }
+      else col++;
+      k++;
+    }
+    var e = src.indexOf('\n', start);
+    return { line: line, col: pos - start + 1, lineStart: start, lineEnd: e === -1 ? src.length : e };
+  }
+
+  /* ---------- Serializer ---------- */
+
+  function quote(str, escapeHtml) {
+    var out = '"';
+    for (var i = 0; i < str.length; i++) {
+      var ch = str[i], code = str.charCodeAt(i);
+      if (ch === '"') out += '\\"';
+      else if (ch === '\\') out += '\\\\';
+      else if (ch === '\n') out += '\\n';
+      else if (ch === '\r') out += '\\r';
+      else if (ch === '\t') out += '\\t';
+      else if (ch === '\b') out += '\\b';
+      else if (ch === '\f') out += '\\f';
+      else if (code < 0x20) out += '\\u' + ('0000' + code.toString(16)).slice(-4);
+      else if (escapeHtml && (ch === '<' || ch === '>' || ch === '&')) out += '\\u' + ('0000' + code.toString(16)).slice(-4);
+      else out += ch;
+    }
+    return out + '"';
+  }
+
+  function makeSorter(order) {
+    if (order === 'none') return null;
+    if (order === 'za') {
+      return function (a, b) { return b.k < a.k ? -1 : b.k > a.k ? 1 : 0; };
+    }
+    if (order === 'azi') {
+      return function (a, b) {
+        var x = a.k.toLowerCase(), y = b.k.toLowerCase();
+        return x < y ? -1 : x > y ? 1 : 0;
+      };
+    }
+    return function (a, b) { return a.k < b.k ? -1 : a.k > b.k ? 1 : 0; };
+  }
+
+  function stringify(node, opts) {
+    var parts = [];
+    var cmp = opts.comparator;
+    var esc = opts.escapeHtml;
+
+    function write(nd, depth) {
+      switch (nd.t) {
+        case 'obj': {
+          if (!nd.props.length) { parts.push('{}'); return; }
+          var props = cmp ? nd.props.slice().sort(cmp) : nd.props;
+          parts.push('{', '\n');
+          for (var i = 0; i < props.length; i++) {
+            parts.push(rep(depth + 1), quote(props[i].k, esc), ':');
+            if (opts.indent !== '') parts.push(' ');
+            write(props[i].v, depth + 1);
+            if (i < props.length - 1) parts.push(',');
+            parts.push('\n');
+          }
+          parts.push(rep(depth), '}');
+          return;
+        }
+        case 'arr': {
+          if (!nd.items.length) { parts.push('[]'); return; }
+          parts.push('[\n');
+          for (var j = 0; j < nd.items.length; j++) {
+            parts.push(rep(depth + 1));
+            write(nd.items[j], depth + 1);
+            if (j < nd.items.length - 1) parts.push(',');
+            parts.push('\n');
+          }
+          parts.push(rep(depth), ']');
+          return;
+        }
+        case 'str': parts.push(quote(nd.v, esc)); return;
+        case 'num': parts.push(nd.raw); return;
+        default: parts.push(nd.v);
+      }
+    }
+
+    function rep(depth) {
+      if (!opts.indent || depth <= 0) return '';
+      var out = '';
+      for (var k = 0; k < depth; k++) out += opts.indent;
+      return out;
+    }
+
+    write(node, 0);
+    return parts.join('');
+  }
+
+  function indentValue() {
+    var v = document.getElementById('indent').value;
+    return v === 'tab' ? '\t' : new Array(parseInt(v, 10) + 1).join(' ');
+  }
+
+  function minifyNode(nd) {
+    switch (nd.t) {
+      case 'obj':
+        if (!nd.props.length) return '{}';
+        return '{' + nd.props.map(function (p) { return quote(p.k, false) + ':' + minifyNode(p.v); }).join(',') + '}';
+      case 'arr':
+        if (!nd.items.length) return '[]';
+        return '[' + nd.items.map(minifyNode).join(',') + ']';
+      case 'str': return quote(nd.v, false);
+      case 'num': return nd.raw;
+      default: return nd.v;
+    }
+  }
+
+  /* ---------- Stats ---------- */
+
+  function collect(node) {
+    var s = { keys: 0, objects: 0, arrays: 0, strings: 0, numbers: 0, bools: 0, nulls: 0, maxDepth: 0, longestKey: 0, values: 0 };
+    (function walk(nd, d) {
+      if (d > s.maxDepth) s.maxDepth = d;
+      s.values++;
+      switch (nd.t) {
+        case 'obj':
+          s.objects++;
+          for (var i = 0; i < nd.props.length; i++) {
+            s.keys++;
+            if (nd.props[i].k.length > s.longestKey) s.longestKey = nd.props[i].k.length;
+            walk(nd.props[i].v, d + 1);
+          }
+          return;
+        case 'arr':
+          s.arrays++;
+          for (var j = 0; j < nd.items.length; j++) walk(nd.items[j], d + 1);
+          return;
+        case 'str': s.strings++; return;
+        case 'num': s.numbers++; return;
+        default:
+          if (nd.v === 'null') s.nulls++; else s.bools++;
+      }
+    })(node, 1);
+    return s;
+  }
+
+  function setStats(valid, s, size) {
+    document.getElementById('j-valid').textContent = valid;
+    document.getElementById('j-size').textContent = App.formatNumber(size);
+    document.getElementById('j-keys').textContent = s ? App.formatNumber(s.keys) : '0';
+    document.getElementById('j-depth').textContent = s ? App.formatNumber(s.maxDepth) : '0';
+    document.getElementById('j-objects').textContent = s ? App.formatNumber(s.objects) : '0';
+    document.getElementById('j-arrays').textContent = s ? App.formatNumber(s.arrays) : '0';
+    document.getElementById('j-strings').textContent = s ? App.formatNumber(s.strings) : '0';
+    document.getElementById('j-numbers').textContent = s ? App.formatNumber(s.numbers) : '0';
+    document.getElementById('j-booleans').textContent = s ? App.formatNumber(s.bools + s.nulls) : '0';
+    document.getElementById('j-longest').textContent = s ? App.formatNumber(s.longestKey) : '0';
+  }
+
+  function showError(err, src) {
+    var text = err.message || String(err);
+    var pos = typeof err.pos === 'number' ? err.pos : 0;
+    var info = positionInfo(src, pos);
+    var lineText = src.slice(info.lineStart, info.lineEnd);
+    if (lineText.length > 160) lineText = lineText.slice(0, 160) + '…';
+    var pointer = new Array(Math.max(1, Math.min(info.col, 160)) + 1).join(' ') + '^';
+    var html = '<strong>Invalid JSON</strong> — ' + App.escapeHtml(text) +
+      '<br>Line ' + info.line + ', column ' + info.col +
+      '<pre style="margin:6px 0 0;overflow-x:auto;font-size:0.82rem;white-space:pre">' +
+      App.escapeHtml(lineText) + '\n' + App.escapeHtml(pointer) + '</pre>';
+    errorBox.innerHTML = html;
+    errorBox.className = 'msg err';
+    errorBox.hidden = false;
+    return 'Invalid JSON: ' + text + ' (line ' + info.line + ', column ' + info.col + ')';
+  }
+
+  /* ---------- Actions ---------- */
+
+  function readInput() {
+    return input.value;
+  }
+
+  function run(mode) {
+    var src = readInput();
+    errorBox.hidden = true;
+    if (!src.trim()) {
+      App.setMsg(status, 'warn', 'Nothing to do — paste some JSON first.');
+      setStats('empty', null, 0);
+      return null;
+    }
+    var node;
+    try {
+      node = parse(src);
+    } catch (e) {
+      if (e instanceof JSONParseError) {
+        setStats('invalid', null, src.length);
+        App.setMsg(status, 'err', showError(e, src));
+        return null;
+      }
+      setStats('invalid', null, src.length);
+      App.setMsg(status, 'err', 'Could not process input: ' + (e && e.message ? e.message : e));
+      return null;
+    }
+
+    var stats = collect(node);
+    setStats('valid', stats, src.length);
+    App.setMsg(status, 'ok', 'Valid JSON. ' + App.formatNumber(stats.keys) + ' keys, ' +
+      App.formatNumber(stats.maxDepth) + ' levels deep, ' + App.formatNumber(src.length) + ' characters.');
+
+    try {
+      if (mode === 'minify') {
+        output.value = minifyNode(node);
+        App.setMsg(status, 'ok', 'Minified successfully — ' + App.formatNumber(output.value.length) + ' characters.' +
+          (node.dupKeys ? ' Note: ' + node.dupKeys + ' duplicate key(s) were kept as-is.' : ''));
+      } else {
+        var order = document.getElementById('sortOrder').value;
+        output.value = stringify(node, {
+          indent: indentValue(),
+          comparator: makeSorter(order),
+          escapeHtml: document.getElementById('escapeMode').value === 'html'
+        });
+        if (mode === 'format') {
+          App.setMsg(status, 'ok', 'Formatted successfully.' +
+            (node.dupKeys ? ' Warning: ' + node.dupKeys + ' duplicate key(s) found.' : ''));
+        } else {
+          App.setMsg(status, 'ok', 'Keys sorted.' +
+            (node.dupKeys ? ' Warning: ' + node.dupKeys + ' duplicate key(s) found.' : ''));
+        }
+      }
+    } catch (e2) {
+      App.setMsg(status, 'err', 'Output failed: ' + (e2 && e2.message ? e2.message : e2));
+      return null;
+    }
+    return node;
+  }
+
+  var liveRun = App.debounce(function () {
+    if (!liveCheck.checked) return;
+    if (input.value.length > LIVE_LIMIT) {
+      errorBox.hidden = true;
+      setStats('skipped', null, input.value.length);
+      App.setMsg(status, 'warn', 'Input is very large — live validation skipped. Use Validate or Format.');
+      return;
+    }
+    run('validate');
+  }, 300);
+
+  input.addEventListener('input', liveRun);
+
+  document.getElementById('formatBtn').addEventListener('click', function () { run('format'); });
+  document.getElementById('minifyBtn').addEventListener('click', function () { run('minify'); });
+  document.getElementById('validateBtn').addEventListener('click', function () { run('validate'); });
+  document.getElementById('sortBtn').addEventListener('click', function () {
+    var order = document.getElementById('sortOrder').value;
+    if (order === 'none') document.getElementById('sortOrder').value = 'az';
+    run('sort');
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    if (!output.value) { App.setMsg(status, 'warn', 'No result to copy yet — run Format or Minify first.'); return; }
+    App.copyText(output.value, this, 'Copied');
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', function () {
+    if (!output.value) { App.setMsg(status, 'warn', 'No result to download yet.'); return; }
+    App.download('formatted.json', output.value, 'application/json');
+  });
+
+  document.getElementById('swapBtn').addEventListener('click', function () {
+    if (!output.value) { App.setMsg(status, 'warn', 'No result available.'); return; }
+    input.value = output.value;
+    run('validate');
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', function () {
+    input.value = '';
+    output.value = '';
+    errorBox.hidden = true;
+    setStats('empty', null, 0);
+    App.setMsg(status, null, '');
+    input.focus();
+  });
+
+  document.getElementById('sampleBtn').addEventListener('click', function () {
+    input.value = JSON.stringify({
+      project: 'Toolbox',
+      version: '1.0.0',
+      private: false,
+      keywords: ['html', 'css', 'javascript', 'offline'],
+      author: { name: 'Toolbox', email: null, active: true },
+      stats: { files: 4, lines: 2500, size_kb: 96.4 },
+      big: 12345678901234567890,
+      emoji: 'Works anywhere ✨'
+    }, null, 2);
+    run('format');
+  });
+
+  var fileInput = document.getElementById('fileInput');
+  document.getElementById('uploadBtn').addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () {
+    var f = fileInput.files[0];
+    App.readFile(f, function (content) {
+      input.value = content;
+      run('format');
+    }, function (err) {
+      App.setMsg(status, 'err', err);
+    });
+    fileInput.value = '';
+  });
+
+  document.addEventListener('dragover', function (e) { e.preventDefault(); });
+  document.addEventListener('drop', function (e) {
+    e.preventDefault();
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    App.readFile(f, function (content) {
+      input.value = content;
+      run('format');
+    }, function (err) { App.setMsg(status, 'err', err); });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      run('format');
+    }
+  });
+
+  setStats('empty', null, 0);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "toolbox-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Optional test suites for the Toolbox static site. The site itself has no dependencies.",
+  "scripts": {
+    "test": "node run.js",
+    "test:browser": "node browser.js",
+    "test:all": "node run.js && node browser.js"
+  },
+  "dependencies": {
+    "jsdom": "^26.1.0",
+    "playwright": "^1.49.0"
+  }
+}
